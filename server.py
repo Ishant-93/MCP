@@ -926,5 +926,5 @@ async def get_server_info() -> str:
     return "Super Singularity MCP Server v1.0 - Complete course and card creation with ElevenLabs TTS + Azure Storage"
 
 if __name__ == "__main__":
-    # Initialize and run the server
-    mcp.run(transport='stdio')
+    # Run FastMCP server with HTTP streaming enabled for Azure deployment
+    mcp.run(transport="http", host="0.0.0.0", port=8080, streamable=True)
