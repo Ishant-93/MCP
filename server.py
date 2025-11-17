@@ -930,4 +930,4 @@ async def get_server_info() -> str:
 #     mcp.run(transport="http", host="0.0.0.0", port=8080, streamable=True)
 
 # Export the ASGI app, so async environments can import it and manage the event loop.
-app = mcp.http_app()
+# app = mcp.http_app()
