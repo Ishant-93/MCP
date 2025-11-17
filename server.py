@@ -926,5 +926,8 @@ async def get_server_info() -> str:
     return "Super Singularity MCP Server v1.0 - Complete course and card creation with ElevenLabs TTS + Azure Storage"
 
 if __name__ == "__main__":
-    # Run FastMCP server with HTTP streaming enabled for Azure deployment
+    # Only launch the server when running locally or directly.
     mcp.run(transport="http", host="0.0.0.0", port=8080, streamable=True)
+
+# Export the ASGI app, so async environments can import it and manage the event loop.
+app = mcp.app
