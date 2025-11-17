@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional
-import httpx
+import requests
 import uuid
 import json
 import base64
@@ -8,10 +8,11 @@ from PIL import Image
 import io
 from datetime import datetime
 import pytz
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from elevenlabs.client import ElevenLabs
 from elevenlabs import VoiceSettings
 from azure.storage.blob import BlobServiceClient
+from openai import AzureOpenAI
 
 # Configuration from environment variables
 import os
@@ -40,7 +41,7 @@ AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "https://your-resourc
 AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-image-1")
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")
 
-async def make_api_request(method: str, endpoint: str, data: Optional[Dict] = None) -> Dict[str, Any]:
+def make_api_request(method: str, endpoint: str, data: Optional[Dict] = None) -> Dict[str, Any]:
     """Make authenticated API request to Super Singularity API."""
     headers = {
         "Authorization": f"Bearer {API_TOKEN}",
@@ -49,29 +50,28 @@ async def make_api_request(method: str, endpoint: str, data: Optional[Dict] = No
 
     url = f"{API_BASE_URL}{endpoint}"
 
-    async with httpx.AsyncClient() as client:
-        try:
-            if method.upper() == "GET":
-                response = await client.get(url, headers=headers, timeout=30.0)
-            elif method.upper() == "POST":
-                response = await client.post(url, headers=headers, json=data, timeout=30.0)
-            elif method.upper() == "PUT":
-                response = await client.put(url, headers=headers, json=data, timeout=30.0)
-            else:
-                return {"error": f"Unsupported HTTP method: {method}"}
+    try:
+        if method.upper() == "GET":
+            response = requests.get(url, headers=headers, timeout=30.0)
+        elif method.upper() == "POST":
+            response = requests.post(url, headers=headers, json=data, timeout=30.0)
+        elif method.upper() == "PUT":
+            response = requests.put(url, headers=headers, json=data, timeout=30.0)
+        else:
+            return {"error": f"Unsupported HTTP method: {method}"}
 
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as e:
-            return {"error": f"HTTP {e.response.status_code}: {e.response.text}"}
-        except Exception as e:
-            return {"error": f"Request failed: {str(e)}"}
+        response.raise_for_status()
+        return response.json()
+    except requests.HTTPError as e:
+        return {"error": f"HTTP {e.response.status_code}: {e.response.text}"}
+    except Exception as e:
+        return {"error": f"Request failed: {str(e)}"}
 
 def generate_uuid() -> str:
     """Generate a new UUID for courses and cards."""
     return str(uuid.uuid4())
 
-async def generate_audio_with_elevenlabs(text: str) -> bytes:
+def generate_audio_with_elevenlabs(text: str) -> bytes:
     """Generate audio from text using ElevenLabs API.
 
     Args:
@@ -84,11 +84,11 @@ async def generate_audio_with_elevenlabs(text: str) -> bytes:
         # Initialize ElevenLabs client
         client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 
-        # Generate audio using the correct API method
-        audio = client.text_to_speech.convert(
+        # Generate audio using the sync API method
+        audio = client.generate(
             text=text,
-            voice_id=ELEVENLABS_VOICE_ID,
-            model_id="eleven_v3",
+            voice=ELEVENLABS_VOICE_ID,
+            model="eleven_v3",
             voice_settings=VoiceSettings(
                 stability=0.5,
                 similarity_boost=0.5,
@@ -137,7 +137,7 @@ async def upload_to_azure(file_data: bytes, filename: str, file_type: str = "aud
     except Exception as e:
         raise Exception(f"Azure Storage upload failed: {str(e)}")
 
-async def generate_and_upload_audio(text: str, title: str) -> str:
+def generate_and_upload_audio(text: str, title: str) -> str:
     """Generate audio from text and upload to Azure Storage.
 
     Args:
@@ -148,15 +148,15 @@ async def generate_and_upload_audio(text: str, title: str) -> str:
         Public URL of the uploaded audio file
     """
     # Generate audio
-    audio_data = await generate_audio_with_elevenlabs(text)
+    audio_data = generate_audio_with_elevenlabs(text)
 
     # Upload to Azure
     filename = title.replace(" ", "_").lower()
-    audio_url = await upload_to_azure(audio_data, filename, "audio", "mp3")
+    audio_url = upload_to_azure(audio_data, filename, "audio", "mp3")
 
     return audio_url
 
-async def generate_image_with_azure_openai(prompt: str, size: str = "1024x1024", output_format: str = "png") -> bytes:
+def generate_image_with_azure_openai(prompt: str, size: str = "1024x1024", output_format: str = "png") -> bytes:
     """Generate image from prompt using Azure OpenAI API.
 
     Args:
@@ -176,41 +176,29 @@ async def generate_image_with_azure_openai(prompt: str, size: str = "1024x1024",
         if output_format not in ["png", "jpg"]:
             raise ValueError(f"Invalid output format: {output_format}. Must be 'png' or 'jpg'")
 
-        url = f"{AZURE_OPENAI_ENDPOINT}/openai/deployments/{AZURE_OPENAI_DEPLOYMENT}/images/generations"
+        client = AzureOpenAI(
+            api_key=AZURE_OPENAI_API_KEY,
+            api_version=AZURE_OPENAI_API_VERSION,
+            azure_endpoint=AZURE_OPENAI_ENDPOINT
+        )
 
-        headers = {
-            "Content-Type": "application/json",
-            "api-key": AZURE_OPENAI_API_KEY
-        }
+        response = client.images.generate(
+            model=AZURE_OPENAI_DEPLOYMENT,
+            prompt=prompt,
+            size=size,
+            quality="standard",
+            n=1
+        )
 
-        data = {
-            "prompt": prompt,
-            "size": size,
-            "quality": "medium",
-            "output_compression": 100,
-            "output_format": output_format,
-            "n": 1
-        }
+        # Get the image URL
+        image_url = response.data[0].url
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                url,
-                headers=headers,
-                json=data,
-                params={"api-version": AZURE_OPENAI_API_VERSION},
-                timeout=60.0
-            )
-            response.raise_for_status()
+        # Download the image
+        image_response = requests.get(image_url)
+        image_response.raise_for_status()
+        image_bytes = image_response.content
 
-            result = response.json()
-
-            # Extract base64 image data
-            if "data" in result and len(result["data"]) > 0:
-                b64_json = result["data"][0]["b64_json"]
-                image_bytes = base64.b64decode(b64_json)
-                return image_bytes
-            else:
-                raise Exception("No image data returned from Azure OpenAI")
+        return image_bytes
 
     except Exception as e:
         raise Exception(f"Azure OpenAI image generation failed: {str(e)}")
@@ -242,7 +230,7 @@ def convert_image_to_webp(image_bytes: bytes, quality: int = 85) -> bytes:
     except Exception as e:
         raise Exception(f"Image conversion to WebP failed: {str(e)}")
 
-async def generate_and_upload_image(prompt: str, title: str, size: str = "1024x1024", output_format: str = "png") -> str:
+def generate_and_upload_image(prompt: str, title: str, size: str = "1024x1024", output_format: str = "png") -> str:
     """Generate image from prompt and upload to Azure Storage.
 
     Args:
@@ -255,29 +243,29 @@ async def generate_and_upload_image(prompt: str, title: str, size: str = "1024x1
         Public URL of the uploaded image file
     """
     # Generate image
-    image_data = await generate_image_with_azure_openai(prompt, size, output_format)
+    image_data = generate_image_with_azure_openai(prompt, size, output_format)
 
     # Convert to WebP for better compression and web optimization
     webp_data = convert_image_to_webp(image_data, quality=85)
 
     # Upload to Azure
     filename = title.replace(" ", "_").lower()
-    image_url = await upload_to_azure(webp_data, filename, "images", "webp")
+    image_url = upload_to_azure(webp_data, filename, "images", "webp")
 
     return image_url
 
 @mcp.tool()
-async def get_course(course_id: str) -> str:
+def get_course(course_id: str) -> str:
     """Get details of a specific course.
 
     Args:
         course_id: The ID of the course to retrieve
     """
-    result = await make_api_request("GET", f"/api/course?id={course_id}")
+    result = make_api_request("GET", f"/api/course?id={course_id}")
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-async def create_course(
+def create_course(
     title: str,
     duration: Optional[int] = 0,
     description: Optional[str] = None,
@@ -332,11 +320,11 @@ async def create_course(
     if theme_id:
         course_data["themeId"] = theme_id
 
-    result = await make_api_request("POST", "/api/createCourse", course_data)
+    result = make_api_request("POST", "/api/createCourse", course_data)
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-async def create_audio_card(
+def create_audio_card(
     course_id: str,
     audio_url: str,
     title: str,
@@ -413,11 +401,11 @@ async def create_audio_card(
     if sort_order:
         card_data["sortOrder"] = sort_order
 
-    result = await make_api_request("POST", "/api/createCard", card_data)
+    result = make_api_request("POST", "/api/createCard", card_data)
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-async def generate_background_image_for_audio(
+def generate_background_image_for_audio(
     prompt: str,
     title: str
 ) -> str:
@@ -441,7 +429,7 @@ async def generate_background_image_for_audio(
         size = "1024x1536"
 
         # Generate and upload image
-        image_url = await generate_and_upload_image(prompt, title, size, "png")
+        image_url = generate_and_upload_image(prompt, title, size, "png")
 
         return f"""Background image generated and uploaded successfully!
 
@@ -470,7 +458,7 @@ async def echo_message(message: str) -> str:
     return f"Echo: {message}"
 
 @mcp.tool()
-async def generate_audio_from_text(text: str, title: str) -> str:
+def generate_audio_from_text(text: str, title: str) -> str:
     """Generate audio from text using ElevenLabs TTS and upload to Azure Storage.
 
     Args:
@@ -482,7 +470,7 @@ async def generate_audio_from_text(text: str, title: str) -> str:
         ist = pytz.timezone('Asia/Kolkata')
         generated_at = datetime.now(ist).isoformat()
         
-        audio_url = await generate_and_upload_audio(text, title)
+        audio_url = generate_and_upload_audio(text, title)
         return f"""Audio generated and uploaded successfully!
 
 Audio URL: {audio_url}
@@ -501,7 +489,7 @@ Note: For audio card background images, consider using generate_background_image
         return f"Error: {str(e)}"
 
 @mcp.tool()
-async def generate_image_from_text(
+def generate_image_from_text(
     prompt: str,
     title: str,
     aspect_ratio: Optional[str] = None,
@@ -545,7 +533,7 @@ async def generate_image_from_text(
             return f"Error: Invalid output format '{output_format}'. Must be 'png' or 'jpg'"
 
         # Generate and upload image
-        image_url = await generate_and_upload_image(prompt, title, size, output_format)
+        image_url = generate_and_upload_image(prompt, title, size, output_format)
 
         return f"""Image generated and uploaded successfully!
 
@@ -564,27 +552,27 @@ Note: The system automatically sets imageGeneratedBy to 'CLAUDE_MCP_SERVER' when
         return f"Error: {str(e)}"
 
 @mcp.tool()
-async def get_card(card_id: str) -> str:
+def get_card(card_id: str) -> str:
     """Get details of a specific card.
 
     Args:
         card_id: The ID of the card to retrieve
     """
-    result = await make_api_request("GET", f"/api/card/{card_id}")
+    result = make_api_request("GET", f"/api/card/{card_id}")
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-async def get_course_cards(course_id: str) -> str:
+def get_course_cards(course_id: str) -> str:
     """Get all cards for a specific course.
 
     Args:
         course_id: The ID of the course to get cards for
     """
-    result = await make_api_request("GET", f"/api/courses/{course_id}/cards")
+    result = make_api_request("GET", f"/api/courses/{course_id}/cards")
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-async def create_content_card(
+def create_content_card(
     course_id: str,
     header1_text: str,
     header2_text: Optional[str] = None,
@@ -653,11 +641,11 @@ async def create_content_card(
     if sort_order:
         card_data["sortOrder"] = sort_order
 
-    result = await make_api_request("POST", "/api/createCard", card_data)
+    result = make_api_request("POST", "/api/createCard", card_data)
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-async def create_quiz_card(
+def create_quiz_card(
     course_id: str,
     question: str,
     options: List[str],
@@ -707,11 +695,11 @@ async def create_quiz_card(
     if sort_order:
         card_data["sortOrder"] = sort_order
 
-    result = await make_api_request("POST", "/api/createCard", card_data)
+    result = make_api_request("POST", "/api/createCard", card_data)
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-async def create_poll_card(
+def create_poll_card(
     course_id: str,
     question: str,
     options: List[str],
@@ -749,11 +737,11 @@ async def create_poll_card(
     if sort_order:
         card_data["sortOrder"] = sort_order
 
-    result = await make_api_request("POST", "/api/createCard", card_data)
+    result = make_api_request("POST", "/api/createCard", card_data)
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-async def create_form_card(
+def create_form_card(
     course_id: str,
     question: str,
     sort_order: Optional[int] = None,
@@ -785,11 +773,11 @@ async def create_form_card(
     if sort_order:
         card_data["sortOrder"] = sort_order
 
-    result = await make_api_request("POST", "/api/createCard", card_data)
+    result = make_api_request("POST", "/api/createCard", card_data)
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-async def create_video_card(
+def create_video_card(
     course_id: str,
     video_url: str,
     sort_order: Optional[int] = None,
@@ -817,11 +805,11 @@ async def create_video_card(
     if sort_order:
         card_data["sortOrder"] = sort_order
 
-    result = await make_api_request("POST", "/api/createCard", card_data)
+    result = make_api_request("POST", "/api/createCard", card_data)
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-async def create_link_card(
+def create_link_card(
     course_id: str,
     title: str,
     link_url: str,
@@ -857,11 +845,11 @@ async def create_link_card(
     if sort_order:
         card_data["sortOrder"] = sort_order
 
-    result = await make_api_request("POST", "/api/createCard", card_data)
+    result = make_api_request("POST", "/api/createCard", card_data)
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-async def update_card(
+def update_card(
     card_id: str,
     contents: Optional[Dict] = None,
     is_mandatory: Optional[bool] = None,
@@ -887,7 +875,7 @@ async def update_card(
     # Handle contents update with GET-merge-PUT to preserve AI metadata
     if contents is not None:
         # Fetch current card to preserve existing fields
-        current_result = await make_api_request("GET", f"/api/card/{card_id}")
+        current_result = make_api_request("GET", f"/api/card/{card_id}")
         
         if "error" in current_result:
             return json.dumps({"error": f"Failed to fetch card for update: {current_result['error']}"}, indent=2)
@@ -917,17 +905,10 @@ async def update_card(
     if not update_data:
         return json.dumps({"error": "No update data provided"}, indent=2)
 
-    result = await make_api_request("PUT", f"/api/card/{card_id}", update_data)
+    result = make_api_request("PUT", f"/api/card/{card_id}", update_data)
     return json.dumps(result, indent=2)
 
 @mcp.tool()
 async def get_server_info() -> str:
     """Get basic information about this MCP server."""
     return "Super Singularity MCP Server v1.0 - Complete course and card creation with ElevenLabs TTS + Azure Storage"
-
-# if __name__ == "__main__":
-#     # Only launch the server when running locally or directly.
-#     mcp.run(transport="http", host="0.0.0.0", port=8080, streamable=True)
-
-# Export the ASGI app, so async environments can import it and manage the event loop.
-# app = mcp.http_app()

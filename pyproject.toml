@@ -7,9 +7,11 @@ requires-python = ">=3.11"
 dependencies = [
     "azure-storage-blob>=12.25.1",
     "elevenlabs>=2.1.0",
-    "httpx>=0.28.1",
-    "mcp>=1.2.0",
+    "fastmcp>=0.9.0",
+    "openai>=1.0.0",
     "pillow>=10.0.0",
     "python-dotenv>=1.1.0",
     "pytz>=2024.1",
+    "requests>=2.31.0",
+    "uvicorn>=0.24.0",
 ]
