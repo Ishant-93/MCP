@@ -13,6 +13,11 @@ from elevenlabs.client import ElevenLabs
 from elevenlabs import VoiceSettings
 from azure.storage.blob import BlobServiceClient
 from openai import AzureOpenAI
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Configuration from environment variables
 import os
@@ -176,31 +181,47 @@ def generate_image_with_azure_openai(prompt: str, size: str = "1024x1024", outpu
         if output_format not in ["png", "jpg"]:
             raise ValueError(f"Invalid output format: {output_format}. Must be 'png' or 'jpg'")
 
-        client = AzureOpenAI(
-            api_key=AZURE_OPENAI_API_KEY,
-            api_version=AZURE_OPENAI_API_VERSION,
-            azure_endpoint=AZURE_OPENAI_ENDPOINT
+        logger.info(f"Attempting to generate image with Azure OpenAI Endpoint: {AZURE_OPENAI_ENDPOINT}")
+        logger.info(f"Deployment: {AZURE_OPENAI_DEPLOYMENT}, API Version: {AZURE_OPENAI_API_VERSION}")
+
+        url = f"{AZURE_OPENAI_ENDPOINT}/openai/deployments/{AZURE_OPENAI_DEPLOYMENT}/images/generations"
+        
+        headers = {
+            "Content-Type": "application/json",
+            "api-key": AZURE_OPENAI_API_KEY
+        }
+
+        data = {
+            "prompt": prompt,
+            "size": size,
+            "quality": "medium",
+            "output_compression": 100,
+            "output_format": output_format,
+            "n": 1
+        }
+
+        response = requests.post(
+            url,
+            headers=headers,
+            json=data,
+            params={"api-version": AZURE_OPENAI_API_VERSION},
+            timeout=60.0
         )
+        
+        response.raise_for_status()
+        result = response.json()
 
-        response = client.images.generate(
-            model=AZURE_OPENAI_DEPLOYMENT,
-            prompt=prompt,
-            size=size,
-            quality="standard",
-            n=1
-        )
-
-        # Get the image URL
-        image_url = response.data[0].url
-
-        # Download the image
-        image_response = requests.get(image_url)
-        image_response.raise_for_status()
-        image_bytes = image_response.content
-
-        return image_bytes
+        # Extract base64 image data
+        if "data" in result and len(result["data"]) > 0:
+            b64_json = result["data"][0]["b64_json"]
+            image_bytes = base64.b64decode(b64_json)
+            logger.info("Image generated successfully")
+            return image_bytes
+        else:
+            raise Exception("No image data returned from Azure OpenAI")
 
     except Exception as e:
+        logger.error(f"Azure OpenAI image generation failed: {str(e)}")
         raise Exception(f"Azure OpenAI image generation failed: {str(e)}")
 
 def convert_image_to_webp(image_bytes: bytes, quality: int = 85) -> bytes:
@@ -243,16 +264,22 @@ def generate_and_upload_image(prompt: str, title: str, size: str = "1024x1024", 
         Public URL of the uploaded image file
     """
     # Generate image
-    image_data = generate_image_with_azure_openai(prompt, size, output_format)
+    try:
+        image_data = generate_image_with_azure_openai(prompt, size, output_format)
+        
+        # Convert to WebP for better compression and web optimization
+        webp_data = convert_image_to_webp(image_data, quality=85)
 
-    # Convert to WebP for better compression and web optimization
-    webp_data = convert_image_to_webp(image_data, quality=85)
-
-    # Upload to Azure
-    filename = title.replace(" ", "_").lower()
-    image_url = upload_to_azure(webp_data, filename, "images", "webp")
-
-    return image_url
+        # Upload to Azure
+        filename = title.replace(" ", "_").lower()
+        image_url = upload_to_azure(webp_data, filename, "images", "webp")
+        
+        return image_url
+        
+    except Exception as e:
+        logger.error(f"Image generation/upload failed: {str(e)}. Using fallback image.")
+        # Fallback image (placeholder)
+        return "https://placehold.co/1024x1024/png?text=Image+Generation+Failed"
 
 @mcp.tool()
 def get_course(course_id: str) -> str:
