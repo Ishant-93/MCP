@@ -46,6 +46,17 @@ AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "https://your-resourc
 AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-image-1").strip('"').strip("'")
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview").strip('"').strip("'")
 
+# Helper function for boolean parsing
+def parse_bool(val: Union[bool, str, None]) -> Optional[bool]:
+    """Parse a boolean value from string or bool."""
+    if val is None:
+        return None
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, str):
+        return val.lower() == "true"
+    return False
+
 def make_api_request(method: str, endpoint: str, data: Optional[Dict] = None) -> Dict[str, Any]:
     """Make authenticated API request to Super Singularity API."""
     headers = {
@@ -292,9 +303,9 @@ def create_course(
     description: Optional[str] = None,
     folder_id: Optional[str] = None,
     finalized_course_plan: Optional[str] = None,
-    is_published: bool = False,
-    is_autoplay: bool = False,
-    is_scorable: bool = False,
+    is_published: Union[bool, str] = False,
+    is_autoplay: Union[bool, str] = False,
+    is_scorable: Union[bool, str] = False,
     gradient_from_color: Optional[str] = None,
     gradient_to_color: Optional[str] = None,
     theme_id: Optional[str] = None
@@ -321,9 +332,9 @@ def create_course(
         "title": title,
         "companyId": COMPANY_ID,
         "duration": duration,
-        "isPublished": is_published,
-        "isAutoplay": is_autoplay,
-        "isScorable": is_scorable,
+        "isPublished": parse_bool(is_published) or False,
+        "isAutoplay": parse_bool(is_autoplay) or False,
+        "isScorable": parse_bool(is_scorable) or False,
         "createdByAgent": True  # Always true for MCP server created courses
     }
 
@@ -333,7 +344,7 @@ def create_course(
             course_data["duration"] = int(duration)
         except ValueError:
             course_data["duration"] = 0
-
+ 
 
     # Add optional fields if provided
     if description:
@@ -364,8 +375,8 @@ def create_audio_card(
     image_prompt: Optional[str] = None,
     image_generated: Optional[Union[bool, str]] = None,
     image_generated_at: Optional[str] = None,
-    sort_order: Optional[int] = None,
-    is_mandatory: bool = False
+    sort_order: Optional[Union[int, str]] = None,
+    is_mandatory: Union[bool, str] = False
 ) -> str:
     """Create an audio card with existing audio URL.
 
@@ -396,6 +407,7 @@ def create_audio_card(
     # Parse boolean fields
     audio_generated_bool = parse_bool(audio_generated)
     image_generated_bool = parse_bool(image_generated)
+    is_mandatory_bool = parse_bool(is_mandatory) or False
 
     contents = {
         "_header1": {
@@ -438,11 +450,17 @@ def create_audio_card(
         "courseId": course_id,
         "cardType": "audio",
         "contents": contents,
-        "isMandatory": is_mandatory
+        "isMandatory": is_mandatory_bool
     }
 
     if sort_order:
-        card_data["sortOrder"] = sort_order
+        if isinstance(sort_order, str):
+            try:
+                card_data["sortOrder"] = int(sort_order)
+            except ValueError:
+                pass
+        else:
+            card_data["sortOrder"] = sort_order
 
     result = make_api_request("POST", "/api/createCard", card_data)
     return json.dumps(result, indent=2)
@@ -656,11 +674,11 @@ def create_content_card(
     header2_text: Optional[str] = None,
     image_url: Optional[str] = None,
     image_prompt: Optional[str] = None,
-    image_generated: Optional[bool] = None,
+    image_generated: Optional[Union[bool, str]] = None,
     image_generated_at: Optional[str] = None,
     align: str = "center center",
-    sort_order: Optional[int] = None,
-    is_mandatory: bool = False
+    sort_order: Optional[Union[int, str]] = None,
+    is_mandatory: Union[bool, str] = False
 ) -> str:
     """Create a content card with text and optional image.
 
@@ -700,12 +718,14 @@ def create_content_card(
     # Add image generation tracking fields if provided
     if image_prompt:
         contents["imagePrompt"] = image_prompt
-    if image_generated is not None:
-        contents["imageGenerated"] = image_generated
+    
+    image_generated_bool = parse_bool(image_generated)
+    if image_generated_bool is not None:
+        contents["imageGenerated"] = image_generated_bool
     if image_generated_at:
         contents["imageGeneratedAt"] = image_generated_at
     # Always set imageGeneratedBy to CLAUDE_MCP_SERVER when image is generated
-    if image_generated:
+    if image_generated_bool:
         contents["imageGeneratedBy"] = "CLAUDE_MCP_SERVER"
 
     card_data = {
@@ -713,11 +733,17 @@ def create_content_card(
         "cardType": "content",
         "contents": contents,
         "align": align,
-        "isMandatory": is_mandatory
+        "isMandatory": parse_bool(is_mandatory) or False
     }
 
     if sort_order:
-        card_data["sortOrder"] = sort_order
+        if isinstance(sort_order, str):
+            try:
+                card_data["sortOrder"] = int(sort_order)
+            except ValueError:
+                pass
+        else:
+            card_data["sortOrder"] = sort_order
 
     result = make_api_request("POST", "/api/createCard", card_data)
     return json.dumps(result, indent=2)
@@ -729,8 +755,8 @@ def create_quiz_card(
     options: List[str],
     correct_answer: str,
     comment: Optional[str] = None,
-    sort_order: Optional[int] = None,
-    is_mandatory: bool = True
+    sort_order: Optional[Union[int, str]] = None,
+    is_mandatory: Union[bool, str] = True
 ) -> str:
     """Create a quiz card with multiple choice question.
 
@@ -767,11 +793,17 @@ def create_quiz_card(
         "courseId": course_id,
         "cardType": "quiz",
         "contents": contents,
-        "isMandatory": is_mandatory
+        "isMandatory": parse_bool(is_mandatory) or True
     }
 
     if sort_order:
-        card_data["sortOrder"] = sort_order
+        if isinstance(sort_order, str):
+            try:
+                card_data["sortOrder"] = int(sort_order)
+            except ValueError:
+                pass
+        else:
+            card_data["sortOrder"] = sort_order
 
     result = make_api_request("POST", "/api/createCard", card_data)
     return json.dumps(result, indent=2)
@@ -781,8 +813,8 @@ def create_poll_card(
     course_id: str,
     question: str,
     options: List[str],
-    sort_order: Optional[int] = None,
-    is_mandatory: bool = False
+    sort_order: Optional[Union[int, str]] = None,
+    is_mandatory: Union[bool, str] = False
 ) -> str:
     """Create a poll card for collecting learner opinions.
 
@@ -809,11 +841,17 @@ def create_poll_card(
         "courseId": course_id,
         "cardType": "poll",
         "contents": contents,
-        "isMandatory": is_mandatory
+        "isMandatory": parse_bool(is_mandatory) or False
     }
 
     if sort_order:
-        card_data["sortOrder"] = sort_order
+        if isinstance(sort_order, str):
+            try:
+                card_data["sortOrder"] = int(sort_order)
+            except ValueError:
+                pass
+        else:
+            card_data["sortOrder"] = sort_order
 
     result = make_api_request("POST", "/api/createCard", card_data)
     return json.dumps(result, indent=2)
@@ -822,8 +860,8 @@ def create_poll_card(
 def create_form_card(
     course_id: str,
     question: str,
-    sort_order: Optional[int] = None,
-    is_mandatory: bool = False
+    sort_order: Optional[Union[int, str]] = None,
+    is_mandatory: Union[bool, str] = False
 ) -> str:
     """Create a form card for collecting learner input.
 
@@ -845,11 +883,17 @@ def create_form_card(
         "courseId": course_id,
         "cardType": "form",
         "contents": contents,
-        "isMandatory": is_mandatory
+        "isMandatory": parse_bool(is_mandatory) or False
     }
 
     if sort_order:
-        card_data["sortOrder"] = sort_order
+        if isinstance(sort_order, str):
+            try:
+                card_data["sortOrder"] = int(sort_order)
+            except ValueError:
+                pass
+        else:
+            card_data["sortOrder"] = sort_order
 
     result = make_api_request("POST", "/api/createCard", card_data)
     return json.dumps(result, indent=2)
@@ -858,8 +902,8 @@ def create_form_card(
 def create_video_card(
     course_id: str,
     video_url: str,
-    sort_order: Optional[int] = None,
-    is_mandatory: bool = False
+    sort_order: Optional[Union[int, str]] = None,
+    is_mandatory: Union[bool, str] = False
 ) -> str:
     """Create a video card for video content.
 
@@ -877,11 +921,17 @@ def create_video_card(
         "courseId": course_id,
         "cardType": "video",
         "contents": contents,
-        "isMandatory": is_mandatory
+        "isMandatory": parse_bool(is_mandatory) or False
     }
 
     if sort_order:
-        card_data["sortOrder"] = sort_order
+        if isinstance(sort_order, str):
+            try:
+                card_data["sortOrder"] = int(sort_order)
+            except ValueError:
+                pass
+        else:
+            card_data["sortOrder"] = sort_order
 
     result = make_api_request("POST", "/api/createCard", card_data)
     return json.dumps(result, indent=2)
@@ -892,7 +942,7 @@ def create_link_card(
     title: str,
     link_url: str,
     link_caption: str = "Visit Link",
-    sort_order: Optional[int] = None
+    sort_order: Optional[Union[int, str]] = None
 ) -> str:
     """Create a link card for external resources.
 
@@ -921,7 +971,13 @@ def create_link_card(
     }
 
     if sort_order:
-        card_data["sortOrder"] = sort_order
+        if isinstance(sort_order, str):
+            try:
+                card_data["sortOrder"] = int(sort_order)
+            except ValueError:
+                pass
+        else:
+            card_data["sortOrder"] = sort_order
 
     result = make_api_request("POST", "/api/createCard", card_data)
     return json.dumps(result, indent=2)
@@ -930,9 +986,9 @@ def create_link_card(
 def update_card(
     card_id: str,
     contents: Optional[Union[Dict, str]] = None,
-    is_mandatory: Optional[bool] = None,
-    sort_order: Optional[int] = None,
-    is_active: Optional[bool] = None,
+    is_mandatory: Optional[Union[bool, str]] = None,
+    sort_order: Optional[Union[int, str]] = None,
+    is_active: Optional[Union[bool, str]] = None,
     card_type: Optional[str] = None
 ) -> str:
     """Update an existing card with automatic preservation of AI-generated metadata.
@@ -976,12 +1032,22 @@ def update_card(
         update_data["contents"] = merged_contents
 
     # Add other fields if provided
-    if is_mandatory is not None:
-        update_data["isMandatory"] = is_mandatory
+    is_mandatory_bool = parse_bool(is_mandatory)
+    if is_mandatory_bool is not None:
+        update_data["isMandatory"] = is_mandatory_bool
+    
     if sort_order is not None:
-        update_data["sortOrder"] = sort_order
-    if is_active is not None:
-        update_data["isActive"] = is_active
+        if isinstance(sort_order, str):
+            try:
+                update_data["sortOrder"] = int(sort_order)
+            except ValueError:
+                pass
+        else:
+            update_data["sortOrder"] = sort_order
+            
+    is_active_bool = parse_bool(is_active)
+    if is_active_bool is not None:
+        update_data["isActive"] = is_active_bool
     
     # Only include cardType if explicitly changing it
     # WARNING: This triggers validation which may clean/remove AI metadata fields
