@@ -264,22 +264,16 @@ def generate_and_upload_image(prompt: str, title: str, size: str = "1024x1024", 
         Public URL of the uploaded image file
     """
     # Generate image
-    try:
-        image_data = generate_image_with_azure_openai(prompt, size, output_format)
-        
-        # Convert to WebP for better compression and web optimization
-        webp_data = convert_image_to_webp(image_data, quality=85)
+    image_data = generate_image_with_azure_openai(prompt, size, output_format)
+    
+    # Convert to WebP for better compression and web optimization
+    webp_data = convert_image_to_webp(image_data, quality=85)
 
-        # Upload to Azure
-        filename = title.replace(" ", "_").lower()
-        image_url = upload_to_azure(webp_data, filename, "images", "webp")
-        
-        return image_url
-        
-    except Exception as e:
-        logger.error(f"Image generation/upload failed: {str(e)}. Using fallback image.")
-        # Fallback image (placeholder)
-        return "https://placehold.co/1024x1024/png?text=Image+Generation+Failed"
+    # Upload to Azure
+    filename = title.replace(" ", "_").lower()
+    image_url = upload_to_azure(webp_data, filename, "images", "webp")
+    
+    return image_url
 
 @mcp.tool()
 def get_course(course_id: str) -> str:
@@ -473,7 +467,25 @@ Use create_audio_card with all audio parameters PLUS these image tracking parame
 
 Note: The system automatically sets imageGeneratedBy to 'CLAUDE_MCP_SERVER' when image_generated is true."""
     except Exception as e:
-        return f"Error: {str(e)}"
+        error_msg = str(e)
+        logger.error(f"Background image generation failed: {error_msg}")
+        fallback_url = "https://placehold.co/1024x1536/png?text=Image+Generation+Failed"
+        
+        return f"""⚠️ Background image generation failed!
+Error: {error_msg}
+
+Using fallback image so you can proceed.
+
+Image URL: {fallback_url}
+Image Format: Portrait (1024x1536) - optimized for audio cards
+
+IMPORTANT: When creating the audio card with this background image, include these parameters:
+- background_image_url: "{fallback_url}"
+- image_prompt: "{prompt}"
+- image_generated: true
+- image_generated_at: "{generated_at}"
+
+Use create_audio_card with all audio parameters PLUS these image tracking parameters for the background."""
 
 @mcp.tool()
 async def echo_message(message: str) -> str:
@@ -576,7 +588,24 @@ For audio cards (background image): Use create_audio_card with background_image_
 
 Note: The system automatically sets imageGeneratedBy to 'CLAUDE_MCP_SERVER' when image_generated is true."""
     except Exception as e:
-        return f"Error: {str(e)}"
+        error_msg = str(e)
+        logger.error(f"Image generation failed: {error_msg}")
+        fallback_url = "https://placehold.co/1024x1024/png?text=Image+Generation+Failed"
+        
+        return f"""⚠️ Image generation failed!
+Error: {error_msg}
+
+Using fallback image so you can proceed.
+
+Image URL: {fallback_url}
+
+IMPORTANT: When creating content or audio cards with this image, include these parameters to properly track generated images:
+- image_prompt: "{prompt}"
+- image_generated: true
+- image_generated_at: "{generated_at}"
+
+For content cards: Use create_content_card with image_url, image_prompt, image_generated, and image_generated_at parameters.
+For audio cards (background image): Use create_audio_card with background_image_url, image_prompt, image_generated, and image_generated_at parameters."""
 
 @mcp.tool()
 def get_card(card_id: str) -> str:
