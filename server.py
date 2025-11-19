@@ -90,10 +90,10 @@ def generate_audio_with_elevenlabs(text: str) -> bytes:
         client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 
         # Generate audio using the sync API method
-        audio = client.generate(
+        audio = client.text_to_speech.convert(
             text=text,
-            voice=ELEVENLABS_VOICE_ID,
-            model="eleven_v3",
+            voice_id=ELEVENLABS_VOICE_ID,
+            model_id="eleven_v3",
             voice_settings=VoiceSettings(
                 stability=0.5,
                 similarity_boost=0.5,
