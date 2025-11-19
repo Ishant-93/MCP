@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 import requests
 import uuid
 import json
@@ -288,7 +288,7 @@ def get_course(course_id: str) -> str:
 @mcp.tool()
 def create_course(
     title: str,
-    duration: Optional[int] = 0,
+    duration: Optional[Union[int, str]] = 0,
     description: Optional[str] = None,
     folder_id: Optional[str] = None,
     finalized_course_plan: Optional[str] = None,
@@ -327,6 +327,14 @@ def create_course(
         "createdByAgent": True  # Always true for MCP server created courses
     }
 
+    # Handle string duration if passed
+    if isinstance(duration, str):
+        try:
+            course_data["duration"] = int(duration)
+        except ValueError:
+            course_data["duration"] = 0
+
+
     # Add optional fields if provided
     if description:
         course_data["description"] = description
@@ -351,10 +359,10 @@ def create_audio_card(
     title: str,
     background_image_url: Optional[str] = None,
     audio_script: Optional[str] = None,
-    audio_generated: Optional[bool] = None,
+    audio_generated: Optional[Union[bool, str]] = None,
     audio_generated_at: Optional[str] = None,
     image_prompt: Optional[str] = None,
-    image_generated: Optional[bool] = None,
+    image_generated: Optional[Union[bool, str]] = None,
     image_generated_at: Optional[str] = None,
     sort_order: Optional[int] = None,
     is_mandatory: bool = False
@@ -375,6 +383,20 @@ def create_audio_card(
         sort_order: Position in course (auto-incremented if not provided)
         is_mandatory: Whether learner must listen to proceed
     """
+    # Helper to parse boolean strings
+    def parse_bool(val: Union[bool, str, None]) -> Optional[bool]:
+        if val is None:
+            return None
+        if isinstance(val, bool):
+            return val
+        if isinstance(val, str):
+            return val.lower() == "true"
+        return False
+
+    # Parse boolean fields
+    audio_generated_bool = parse_bool(audio_generated)
+    image_generated_bool = parse_bool(image_generated)
+
     contents = {
         "_header1": {
             "text": title,
@@ -391,25 +413,25 @@ def create_audio_card(
     if audio_script:
         contents["audioScript"] = audio_script
 
-    if audio_generated is not None:
-        contents["audioGenerated"] = audio_generated
+    if audio_generated_bool is not None:
+        contents["audioGenerated"] = audio_generated_bool
 
     if audio_generated_at:
         contents["audioGeneratedAt"] = audio_generated_at
     
     # Always set audioGeneratedBy to CLAUDE_MCP_SERVER when audio is generated
-    if audio_generated:
+    if audio_generated_bool:
         contents["audioGeneratedBy"] = "CLAUDE_MCP_SERVER"
     
     # Add image generation tracking fields for background image if provided
     if image_prompt:
         contents["imagePrompt"] = image_prompt
-    if image_generated is not None:
-        contents["imageGenerated"] = image_generated
+    if image_generated_bool is not None:
+        contents["imageGenerated"] = image_generated_bool
     if image_generated_at:
         contents["imageGeneratedAt"] = image_generated_at
     # Always set imageGeneratedBy to CLAUDE_MCP_SERVER when background image is generated
-    if image_generated:
+    if image_generated_bool:
         contents["imageGeneratedBy"] = "CLAUDE_MCP_SERVER"
 
     card_data = {
@@ -907,7 +929,7 @@ def create_link_card(
 @mcp.tool()
 def update_card(
     card_id: str,
-    contents: Optional[Dict] = None,
+    contents: Optional[Union[Dict, str]] = None,
     is_mandatory: Optional[bool] = None,
     sort_order: Optional[int] = None,
     is_active: Optional[bool] = None,
@@ -938,9 +960,18 @@ def update_card(
         
         # Merge contents (shallow merge - preserves all top-level keys)
         current_contents = current_result.get("contents", {})
+        
+        # Handle string contents (parse JSON)
+        contents_to_merge = contents
+        if isinstance(contents, str):
+            try:
+                contents_to_merge = json.loads(contents)
+            except json.JSONDecodeError:
+                return json.dumps({"error": "Invalid JSON string provided for contents"}, indent=2)
+
         merged_contents = {
             **current_contents,  # Preserve all existing fields
-            **contents           # Apply updates
+            **contents_to_merge  # Apply updates
         }
         update_data["contents"] = merged_contents
 
