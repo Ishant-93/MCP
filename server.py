@@ -109,7 +109,7 @@ def generate_audio_with_elevenlabs(text: str) -> bytes:
     except Exception as e:
         raise Exception(f"ElevenLabs audio generation failed: {str(e)}")
 
-async def upload_to_azure(file_data: bytes, filename: str, file_type: str = "audio", file_extension: str = "mp3") -> str:
+def upload_to_azure(file_data: bytes, filename: str, file_type: str = "audio", file_extension: str = "mp3") -> str:
     """Upload file data to Azure Storage and return the public URL.
 
     Args:
