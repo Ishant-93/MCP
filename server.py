@@ -28,23 +28,23 @@ load_dotenv()
 # Initialize FastMCP server
 mcp = FastMCP("super-singularity-api-server")
 
-API_BASE_URL = os.getenv("API_BASE_URL", "https://your-api-domain.com")
-API_TOKEN = os.getenv("API_TOKEN", "your-bearer-token-here")
-COMPANY_ID = os.getenv("COMPANY_ID", "your-company-id-here")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://your-api-domain.com").strip('"').strip("'")
+API_TOKEN = os.getenv("API_TOKEN", "your-bearer-token-here").strip('"').strip("'")
+COMPANY_ID = os.getenv("COMPANY_ID", "your-company-id-here").strip('"').strip("'")
 
 # ElevenLabs configuration
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "your-elevenlabs-api-key")
-ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # Default: Rachel
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "your-elevenlabs-api-key").strip('"').strip("'")
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM").strip('"').strip("'")  # Default: Rachel
 
 # Azure Storage configuration
-AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "your-azure-connection-string")
-AZURE_CONTAINER_NAME = os.getenv("AZURE_CONTAINER_NAME", "audio-files")
+AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "your-azure-connection-string").strip('"').strip("'")
+AZURE_CONTAINER_NAME = os.getenv("AZURE_CONTAINER_NAME", "audio-files").strip('"').strip("'")
 
 # Azure OpenAI configuration
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "your-azure-openai-api-key")
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "https://your-resource.cognitiveservices.azure.com")
-AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-image-1")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY", "your-azure-openai-api-key").strip('"').strip("'")
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT", "https://your-resource.cognitiveservices.azure.com").strip('"').strip("'")
+AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-image-1").strip('"').strip("'")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview").strip('"').strip("'")
 
 def make_api_request(method: str, endpoint: str, data: Optional[Dict] = None) -> Dict[str, Any]:
     """Make authenticated API request to Super Singularity API."""
